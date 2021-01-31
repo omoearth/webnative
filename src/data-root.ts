@@ -20,6 +20,7 @@ const EMPTY_CID = 'Qmc5m94Gu7z62RC8waSKkZUrCCBJPyHbkpmGzEePxy2oXJ'
 
 /**
  * Get the CID of a user's data root.
+ *
  * First check Fission server, then check DNS
  *
  * @param username The username of the user that we want to get the data root of.
@@ -48,6 +49,19 @@ export async function lookup(
 export async function lookupOnFisson(
   username: string
 ): Promise<CID | null> {
+  const logger = debug.newLogger("lookupOnFisson()");
+  if (setup.additionalDnsLinkResolver)
+  {
+    try
+    {
+      logger.log("A custom 'additionalDnsLinkResolver' was provided. Calling it now for: ", username)
+      await setup.additionalDnsLinkResolver(username)
+    }
+    catch (e)
+    {
+      logger.log("ERROR: The custom 'additionalDnsLinkResolver' failed to execute: ", e)
+    }
+  }
   try {
     const resp = await fetch(
       `${setup.endpoints.api}/user/data/${username}`,
@@ -60,7 +74,7 @@ export async function lookupOnFisson(
     return cid
 
   } catch(err) {
-    debug.log('Could not locate user root on Fission server: ', err.toString())
+    logger.log('Could not locate user root on Fission server: ', err.toString())
     return null
 
   }
@@ -76,29 +90,45 @@ export async function update(
   cid: CID | string,
   proof: string
 ): Promise<void> {
+  const logger = debug.newLogger(`DataRoot.update(cid: ${cid.toString()})`);
+  logger.log("begin");
   const apiEndpoint = setup.endpoints.api
 
   // Debug
-  debug.log("🌊 Updating your DNSLink:", cid)
+  logger.log("🚀 Updating your DNSLink:", cid)
 
   // Cancel previous updates
   if (fetchController) fetchController.abort()
   fetchController = new AbortController()
   const signal = fetchController.signal
 
+  const jwt = await ucan.build({
+    audience: await api.did(),
+    issuer: await did.ucan(),
+    potency: "APPEND",
+    proof,
+
+    // TODO: Waiting on API change.
+    //       Should be `username.fission.name/*`
+    resource: ucan.decode(proof).payload.rsc
+  });
+
   // Make API call
+  if (setup.additionalDnsLinkUpdater)
+  {
+    try
+    {
+      logger.log("A custom 'additionalDnsLinkUpdater' was provided. Calling it now for: ", cid)
+      await setup.additionalDnsLinkUpdater(jwt, cid)
+    }
+    catch (e)
+    {
+      logger.log("ERROR: The custom 'additionalDnsLinkUpdater' failed to execute: ", e)
+    }
+  }
+
   await fetchWithRetry(`${apiEndpoint}/user/data/${cid}`, {
     headers: async () => {
-      const jwt = await ucan.build({
-        audience: await api.did(),
-        issuer: await did.ucan(),
-        potency: "APPEND",
-        proof,
-
-        // TODO: Waiting on API change.
-        //       Should be `username.fission.name/*`
-        resource: ucan.decode(proof).payload.rsc
-      })
 
       return { 'authorization': `Bearer ${jwt}` }
     },
@@ -111,14 +141,14 @@ export async function update(
     signal
 
   }).then((response: Response) => {
-    if (response.status < 300) debug.log("🪴 DNSLink updated:", cid)
-    else debug.log("🔥 Failed to update DNSLink for:", cid)
+    if (response.status < 300) logger.log("🪴 DNSLink updated:", cid)
+    else logger.log("🔥 Failed to update DNSLink for:", cid)
 
   }).catch(err => {
     if (signal.aborted) {
-      debug.log("⛄️ Cancelling DNSLink update for:", cid)
+      logger.log("⛄️ Cancelling DNSLink update for:", cid)
     } else {
-      debug.log("🔥 Failed to update DNSLink for:", cid)
+      logger.log("🔥 Failed to update DNSLink for:", cid)
       console.error(err)
     }
 
@@ -131,9 +161,9 @@ export async function update(
 
 
 type RetryOptions = {
-  headers: () => Promise<{ [_: string]: string }>,
-  retries: number,
-  retryDelay: number,
+  headers: () => Promise<{ [_: string]: string }>
+  retries: number
+  retryDelay: number
   retryOn: Array<number>
 }
 
@@ -142,7 +172,7 @@ async function fetchWithRetry(
   url: string,
   retryOptions: RetryOptions,
   fetchOptions: RequestInit,
-  retry: number = 0
+  retry = 0
 ): Promise<Response> {
   const headers = await retryOptions.headers()
   const response = await fetch(url, {

@@ -23,7 +23,10 @@ export const catRaw = async (cid: CID): Promise<Buffer[]> => {
   const chunks = []
   await attemptPin(cid)
   for await (const chunk of ipfs.cat(cid)) {
-    chunks.push(chunk)
+    if (Buffer.isBuffer(chunk))
+      chunks.push(chunk)
+    else
+      chunks.push(Buffer.from(chunk));
   }
   return chunks
 }

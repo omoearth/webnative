@@ -10,6 +10,7 @@ import BareTree from '../bare/tree'
 import MMPT from '../protocol/private/mmpt'
 import PublicTree from '../v1/PublicTree'
 import PrivateTree from '../v1/PrivateTree'
+import * as debug from "../../common/debug";
 
 
 export default class RootTree implements Puttable {
@@ -77,14 +78,19 @@ export default class RootTree implements Puttable {
   }
 
   static async fromCID({ cid, key }: { cid: CID, key: string }): Promise<RootTree> {
+    const logger = debug.newLogger("Tree.fromCID");
+    logger.log(`RootTree.fromCID(${cid.toString()}) -> await protocol.basic.getLinks(cid) ...`);
     const links = await protocol.basic.getLinks(cid)
 
     // Load public parts
     const publicCID = links[Branch.Public]?.cid || null
+
+    logger.log(`RootTree.fromCID(${cid.toString()}) -> await PublicTree.fromCID(publicCID) ...`);
     const publicTree = publicCID === null
       ? await PublicTree.empty()
       : await PublicTree.fromCID(publicCID)
 
+    logger.log(`RootTree.fromCID(${cid.toString()}) -> await BareTree.fromCID(links[Branch.Pretty].cid) ...`);
     const prettyTree = links[Branch.Pretty]
                          ? await BareTree.fromCID(links[Branch.Pretty].cid)
                          : await BareTree.empty()
@@ -95,13 +101,16 @@ export default class RootTree implements Puttable {
     let mmpt, privateTree
     if (privateCID === null) {
       mmpt = await MMPT.create()
+      logger.log(`RootTree.fromCID(${cid.toString()}) -> await PrivateTree.create(mmpt, key, null) ...`);
       privateTree = await PrivateTree.create(mmpt, key, null)
     } else {
       mmpt = await MMPT.fromCID(privateCID)
+      logger.log(`RootTree.fromCID(${cid.toString()}) -> await PrivateTree.fromBaseKey(mmpt, key) ...`);
       privateTree = await PrivateTree.fromBaseKey(mmpt, key)
     }
 
     const privateLogCid = links[Branch.PrivateLog]?.cid
+    logger.log(`RootTree.fromCID(${cid.toString()}) -> await ipfs.dagGet(privateLogCid) ...`);
     const privateLog = privateLogCid
       ? await ipfs.dagGet(privateLogCid)
           .then(dagNode => dagNode.Links.map(link.fromDAGLink))
@@ -111,6 +120,7 @@ export default class RootTree implements Puttable {
       : []
 
     // Construct tree
+    logger.log(`RootTree.fromCID(${cid.toString()}) -> new RootTree ...`);
     const tree = new RootTree({
       links,
       mmpt,
@@ -122,6 +132,7 @@ export default class RootTree implements Puttable {
     })
 
     // Fin
+    logger.log(`RootTree.fromCID(${cid.toString()}) -> DONE`);
     return tree
   }
 

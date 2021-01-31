@@ -1,6 +1,5 @@
 import { Endpoints, setup as internalSetup } from './setup/internal'
 
-
 type UnknownObject =
   { [key: string]: unknown }
 
@@ -10,8 +9,16 @@ type UnknownObject =
  *
  * Only adds a few `console.log`s at this moment.
  */
-export function debug({ enabled }: { enabled: boolean }): boolean {
-  internalSetup.debug = enabled
+export function configure({ enableDebugMode, externalLogger, additionalDnsLinkUpdater, additionalDnsLinkResolver }: {
+  enableDebugMode: boolean
+  externalLogger?:(...args: any[]) => void
+  additionalDnsLinkUpdater?:(jwt:string, cid:string) => Promise<void>
+  additionalDnsLinkResolver?:(fissionUsername:string) => Promise<string>
+}): boolean {
+  internalSetup.debug = enableDebugMode
+  internalSetup.externalLogger = externalLogger;
+  internalSetup.additionalDnsLinkUpdater = additionalDnsLinkUpdater;
+  internalSetup.additionalDnsLinkResolver = additionalDnsLinkResolver;
   return internalSetup.debug
 }
 

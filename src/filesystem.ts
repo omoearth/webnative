@@ -24,6 +24,8 @@ export async function loadFileSystem(
   username?: string
 ): Promise<FileSystem> {
   let cid, fs
+  const logger = debug.newLogger(`FileSystem.loadFileSystem(username:${username})`);
+  logger.log("begin");
 
   // Look for username
   username = username || (await authenticatedUsername() || undefined)
@@ -43,25 +45,25 @@ export async function loadFileSystem(
   } else if (!dataCid) {
     // No DNS CID yet
     cid = await cidLog.newest()
-    if (cid) debug.log("📓 No DNSLink, using local CID:", cid)
-    else debug.log("📓 Creating a new file system")
+    if (cid) logger.log("📓 No DNSLink, using local CID:", cid)
+    else logger.log("📓 Creating a new file system")
 
   } else if (logIdx === 0) {
     // DNS is up to date
     cid = dataCid
-    debug.log("📓 DNSLink is up to date:", cid)
+    logger.log("📓 DNSLink is up to date:", cid)
 
   } else if (logIdx > 0) {
     // DNS is outdated
     cid = await cidLog.newest()
     const idxLog = logIdx === 1 ? "1 newer local entry" : logIdx + " newer local entries"
-    debug.log("📓 DNSLink is outdated (" + idxLog + "), using local CID:", cid)
+    logger.log("📓 DNSLink is outdated (" + idxLog + "), using local CID:", cid)
 
   } else {
     // DNS is newer
     cid = dataCid
     await cidLog.add(cid)
-    debug.log("📓 DNSLink is newer:", cid)
+    logger.log("📓 DNSLink is newer:", cid)
 
   }
 
@@ -77,6 +79,7 @@ export async function loadFileSystem(
   await addSampleData(fs)
 
   // Fin
+  logger.log("end");
   return fs
 }
 
